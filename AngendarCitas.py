@@ -156,7 +156,7 @@ class ModuloCitasApp:
         self.citas_btn.grid(row=0, column=3, padx=10)
     
         
-        self.frame_left = tk.Frame(self.root, bg="#ffffff", bd=1, relief="solid")
+        self.frame_left = tk.Frame(self.root, bg="#50416E", bd=1, relief="solid")
         self.frame_left.place(x=10, y=70, width=360, height=600) 
      
         self.frame_center = tk.Frame(self.root, bg="#cccccc", bd=1, relief="solid")
