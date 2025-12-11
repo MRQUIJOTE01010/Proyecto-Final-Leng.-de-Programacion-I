@@ -135,5 +135,4 @@ class Root(tk.Tk):
 
 if __name__ == "__main__":
     app = Root()
-
     app.mainloop()
