@@ -2,7 +2,7 @@ import tkinter as tk
 import os
 from CRUD_Pacientes import ModuloPacientes
 from ModuloDoctores import ModuloDoctores
-from citas_ej import Citas
+#from citas_ej import Citas
 
 class Root(tk.Tk):
     def __init__(self):
@@ -82,7 +82,7 @@ class Root(tk.Tk):
             borderwidth=2,
             relief="solid",
             cursor="hand2",
-            command=self.abrir_citas
+           # command=self.abrir_citas
         )
         self.citas_btn.grid(row=0, column=3, padx=10)
 
@@ -109,16 +109,16 @@ class Root(tk.Tk):
             lambda: self.cerrar_ventana("doctores")
         )
 
-    def abrir_citas(self):
-        if self.ventana_citas and tk.Toplevel.winfo_exists(self.ventana_citas):
-            self.ventana_citas.lift()
-            return
-        self.withdraw()
-        self.ventana_citas = Citas(self)
-        self.ventana_citas.protocol(
-            "WM_DELETE_WINDOW",
-            lambda: self.cerrar_ventana("citas")
-        )
+  #  def abrir_citas(self):
+       # if self.ventana_citas and tk.Toplevel.winfo_exists(self.ventana_citas):
+          #  self.ventana_citas.lift()
+       #     return
+      #  self.withdraw()
+       # self.ventana_citas = Citas(self)
+        #self.ventana_citas.protocol(
+          #  "WM_DELETE_WINDOW",
+          #  lambda: self.cerrar_ventana("citas")
+     #   )
 
     # funcion para cuando se cierre un top level
     def cerrar_ventana(self, tipo):
@@ -135,4 +135,5 @@ class Root(tk.Tk):
 
 if __name__ == "__main__":
     app = Root()
+
     app.mainloop()
