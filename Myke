@@ -1,0 +1,660 @@
+import os
+import sqlite3
+import csv
+import datetime
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+
+try:
+    from tkcalendar import DateEntry
+    TKCALENDAR_AVAILABLE = True
+except Exception:
+    TKCALENDAR_AVAILABLE = False
+
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except Exception:
+    PIL_AVAILABLE = False
+
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    REPORTLAB_AVAILABLE = True
+except Exception:
+    REPORTLAB_AVAILABLE = False
+
+DB_PATH = "clinica_completo.db"
+IMAGE_DIR = "images"  
+
+os.makedirs(IMAGE_DIR, exist_ok=True)
+
+
+class ModuloCitasApp:
+    def __init__(self, root):
+        self.root = root
+        root.title("Sistema de Citas - Módulo Completo")
+        root.geometry("1000x640")
+        root.configure(bg="#57717b")
+
+      
+        self.db = sqlite3.connect(DB_PATH)
+        self.cursor = self.db.cursor()
+        self.crear_tablas()
+
+      
+        self.var_paciente = tk.StringVar()
+        self.var_doctor = tk.StringVar()
+        self.var_fecha = tk.StringVar()
+        self.var_hora = tk.StringVar()
+
+        
+        self.filter_doctor = tk.StringVar()
+        self.filter_paciente = tk.StringVar()
+        self.filter_fecha = tk.StringVar()
+
+       
+        self.preview_img = None
+
+        self.crear_frames()
+        self.crear_formulario()
+        self.crear_treeview()
+        self.cargar_comboboxes()
+        self.mostrar_citas()
+
+    def crear_tablas(self):
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pacientes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                imagen TEXT
+            )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS doctores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                imagen TEXT
+            )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS citas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_paciente INTEGER NOT NULL,
+                id_doctor INTEGER NOT NULL,
+                fecha TEXT NOT NULL,
+                hora TEXT NOT NULL,
+                FOREIGN KEY (id_paciente) REFERENCES pacientes(id),
+                FOREIGN KEY (id_doctor) REFERENCES doctores(id)
+            )
+        """)
+        # Datos de ejemplo mínimos
+        self.cursor.execute("SELECT COUNT(*) FROM pacientes")
+        if self.cursor.fetchone()[0] == 0:
+            self.cursor.executemany("INSERT INTO pacientes (nombre, imagen) VALUES (?, ?)", [
+                ("Juan Pérez", None),
+                ("Ana Gómez", None),
+                ("Carlos Díaz", None),
+            ])
+        self.cursor.execute("SELECT COUNT(*) FROM doctores")
+        if self.cursor.fetchone()[0] == 0:
+            self.cursor.executemany("INSERT INTO doctores (nombre, imagen) VALUES (?, ?)", [
+                ("Dr. Ramírez", None),
+                ("Dra. Torres", None),
+                ("Dr. Medina", None),
+            ])
+        self.db.commit()
+
+    def crear_frames(self):
+        self.frame_left = tk.Frame(self.root, bg="#50416E", bd=1, relief="solid")
+        self.frame_left.place(x=10, y=10, width=360, height=620)
+
+     
+        self.frame_center = tk.Frame(self.root, bg="#6d6a79", bd=1, relief="solid")
+        self.frame_center.place(x=380, y=4, width=610, height=450)
+
+     
+        self.frame_right = tk.Frame(self.root, bg="#f8f8f8", bd=1, relief="solid")
+        self.frame_right.place(x=380, y=440, width=610, height=190)
+
+    def crear_formulario(self):
+        padx = 12
+        pady = 8
+
+        title = tk.Label(self.frame_left, text="AGENDAR / EDITAR CITA", font=("Segoe UI", 12, "bold"), bg="#ffffff")
+        title.place(x=12, y=10)
+        tk.Label(self.frame_left, text="Paciente:", bg="#ffffff").place(x=12, y=50)
+        self.cmb_paciente = ttk.Combobox(self.frame_left, textvariable=self.var_paciente, width=30)
+        self.cmb_paciente.place(x=12, y=72)
+        self.cmb_paciente.bind("<<ComboboxSelected>>", lambda e: self.mostrar_imagen_relacionada())
+
+        btn_add_p = tk.Button(self.frame_left, text="Agregar Paciente", command=self.abrir_popup_paciente)
+        btn_add_p.place(x=12, y=102)
+
+        
+        tk.Label(self.frame_left, text="Doctor:", bg="#ffffff").place(x=12, y=140)
+        self.cmb_doctor = ttk.Combobox(self.frame_left, textvariable=self.var_doctor, width=30)
+        self.cmb_doctor.place(x=12, y=162)
+        self.cmb_doctor.bind("<<ComboboxSelected>>", lambda e: self.mostrar_imagen_relacionada())
+
+        btn_add_d = tk.Button(self.frame_left, text="Agregar Doctor", command=self.abrir_popup_doctor)
+        btn_add_d.place(x=12, y=192)
+
+      
+        tk.Label(self.frame_left, text="Fecha:", bg="#ffffff").place(x=12, y=230)
+        if TKCALENDAR_AVAILABLE:
+            self.date_entry = DateEntry(self.frame_left, width=27, date_pattern="yyyy-mm-dd",
+                                        textvariable=self.var_fecha)
+            self.date_entry.place(x=12, y=252)
+        else:
+            self.entry_fecha = tk.Entry(self.frame_left, textvariable=self.var_fecha, width=30)
+            self.entry_fecha.place(x=12, y=252)
+            tk.Label(self.frame_left, text="(Instala tkcalendar para calendario)", fg="gray", bg="#ffffff").place(x=12, y=280)
+
+       
+        tk.Label(self.frame_left, text="Hora (HH:MM, 24h):", bg="#ffffff").place(x=12, y=300)
+        self.entry_hora = tk.Entry(self.frame_left, textvariable=self.var_hora, width=30)
+        self.entry_hora.place(x=12, y=322)
+        tk.Label(self.frame_left, text="Ejemplo: 14:30", fg="gray", bg="#ffffff").place(x=12, y=349)
+
+        self.btn_guardar = tk.Button(self.frame_left, text="Guardar Cita", bg="#4CAF50", fg="white",
+                                     command=self.guardar_cita, width=16)
+        self.btn_guardar.place(x=12, y=380)
+
+        self.btn_actualizar = tk.Button(self.frame_left, text="Actualizar Cita", bg="#2196F3", fg="white",
+                                        command=self.actualizar_cita, width=16, state="disabled")
+        self.btn_actualizar.place(x=200, y=380)
+
+        self.lbl_preview_title = tk.Label(self.frame_left, text="Imagen seleccionada:", bg="#ffffff")
+        self.lbl_preview_title.place(x=12, y=430)
+        self.lbl_preview = tk.Label(self.frame_left, bg="#ededed", width=36, height=8, relief="ridge")
+        self.lbl_preview.place(x=12, y=452)
+
+    def crear_treeview(self):
+        tk.Label(self.frame_center, text="CITAS AGENDADAS", font=("Segoe UI", 12, "bold"), bg="#ffffff").place(x=12, y=8)
+
+        tk.Label(self.frame_center, text="Filtrar por Doctor:", bg="#ffffff").place(x=12, y=40)
+        self.cmb_filter_doctor = ttk.Combobox(self.frame_center, textvariable=self.filter_doctor, width=20)
+        self.cmb_filter_doctor.place(x=125, y=40)
+
+        tk.Label(self.frame_center, text="Paciente:", bg="#ffffff").place(x=330, y=40)
+        self.cmb_filter_paciente = ttk.Combobox(self.frame_center, textvariable=self.filter_paciente, width=20)
+        self.cmb_filter_paciente.place(x=395, y=40)
+
+        tk.Label(self.frame_center, text="Fecha:", bg="#ffffff").place(x=12, y=70)
+        if TKCALENDAR_AVAILABLE:
+            self.filter_fecha_widget = DateEntry(self.frame_center, textvariable=self.filter_fecha, date_pattern="yyyy-mm-dd", width=18)
+            self.filter_fecha_widget.place(x=60, y=70)
+        else:
+            self.entry_filter_fecha = tk.Entry(self.frame_center, textvariable=self.filter_fecha, width=22)
+            self.entry_filter_fecha.place(x=60, y=70)
+            tk.Label(self.frame_center, text="(yyyy-mm-dd)", fg="gray", bg="#ffffff").place(x=200, y=70)
+
+        tk.Button(self.frame_center, text="Aplicar filtros", command=self.mostrar_citas).place(x=330, y=70)
+        tk.Button(self.frame_center, text="Limpiar filtros", command=self.limpiar_filtros).place(x=430, y=70)
+
+        cols = ("ID", "Paciente", "Doctor", "Fecha", "Hora")
+        self.tree = ttk.Treeview(self.frame_center, columns=cols, show="headings", selectmode="browse")
+        for c in cols:
+            self.tree.heading(c, text=c)
+            self.tree.column(c, width=110, anchor="center")
+        self.tree.place(x=12, y=110, width=580, height=290)
+        self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+
+        vsb = ttk.Scrollbar(self.frame_center, orient="vertical", command=self.tree.yview)
+        vsb.place(x=592, y=110, height=290)
+        self.tree.configure(yscrollcommand=vsb.set)
+
+        tk.Button(self.frame_center, text="Eliminar cita", bg="#f44336", fg="white", command=self.eliminar_cita).place(x=12, y=410)
+        tk.Button(self.frame_center, text="Editar cita", bg="#ff9800", fg="white", command=self.cargar_cita_para_editar).place(x=120, y=410)
+        tk.Button(self.frame_center, text="Exportar a CSV", command=self.exportar_csv).place(x=220, y=410)
+        tk.Button(self.frame_center, text="Exportar a PDF", command=self.exportar_pdf).place(x=340, y=410)
+
+    def crear_controles_extra(self):
+        pass
+
+    def cargar_comboboxes(self):
+        self.cursor.execute("SELECT nombre FROM pacientes ORDER BY nombre")
+        pacientes = [r[0] for r in self.cursor.fetchall()]
+        self.cmb_paciente["values"] = pacientes
+        self.cmb_filter_paciente["values"] = [""] + pacientes
+
+        self.cursor.execute("SELECT nombre FROM doctores ORDER BY nombre")
+        doctores = [r[0] for r in self.cursor.fetchall()]
+        self.cmb_doctor["values"] = doctores
+        self.cmb_filter_doctor["values"] = [""] + doctores
+
+    def abrir_popup_paciente(self):
+        PopupPersona(self, tipo="paciente")
+
+    def abrir_popup_doctor(self):
+        PopupPersona(self, tipo="doctor")
+
+    def guardar_cita(self):
+        paciente_nombre = self.var_paciente.get().strip()
+        doctor_nombre = self.var_doctor.get().strip()
+        fecha = self.var_fecha.get().strip()
+        hora = self.var_hora.get().strip()
+
+        if not paciente_nombre or not doctor_nombre or not fecha or not hora:
+            messagebox.showwarning("Campos incompletos", "Complete todos los campos antes de guardar.")
+            return
+
+        try:
+            datetime.datetime.strptime(fecha, "%Y-%m-%d")
+        except Exception:
+            messagebox.showerror("Formato fecha", "La fecha debe tener formato YYYY-MM-DD.")
+            return
+
+        try:
+            datetime.datetime.strptime(hora, "%H:%M")
+        except Exception:
+            messagebox.showerror("Formato hora", "La hora debe tener formato HH:MM (24h).")
+            return
+
+        self.cursor.execute("SELECT id FROM doctores WHERE nombre = ?", (doctor_nombre,))
+        doctor = self.cursor.fetchone()
+        if not doctor:
+            messagebox.showerror("Doctor no existe", "Seleccione o cree un doctor válido.")
+            return
+        id_doctor = doctor[0]
+
+        self.cursor.execute("SELECT id FROM pacientes WHERE nombre = ?", (paciente_nombre,))
+        paciente = self.cursor.fetchone()
+        if not paciente:
+            messagebox.showerror("Paciente no existe", "Seleccione o cree un paciente válido.")
+            return
+        id_paciente = paciente[0]
+
+        self.cursor.execute("""
+            SELECT COUNT(*) FROM citas WHERE id_doctor=? AND fecha=? AND hora=?
+        """, (id_doctor, fecha, hora))
+        if self.cursor.fetchone()[0] > 0:
+            messagebox.showerror("Conflicto de horario", f"El doctor {doctor_nombre} ya tiene una cita el {fecha} a las {hora}.")
+            return
+        self.cursor.execute("INSERT INTO citas (id_paciente, id_doctor, fecha, hora) VALUES (?, ?, ?, ?)",
+                            (id_paciente, id_doctor, fecha, hora))
+        self.db.commit()
+        messagebox.showinfo("Cita guardada", "La cita se ha guardado correctamente.")
+        self.limpiar_campos_cita()
+        self.cargar_comboboxes()
+        self.mostrar_citas()
+
+    def mostrar_citas(self):
+    
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+
+        sql = """
+            SELECT citas.id, pacientes.nombre, doctores.nombre, citas.fecha, citas.hora
+            FROM citas
+            JOIN pacientes ON citas.id_paciente = pacientes.id
+            JOIN doctores ON citas.id_doctor = doctores.id
+        """
+        filtros = []
+        params = []
+
+        if self.filter_doctor.get():
+            filtros.append("doctores.nombre = ?")
+            params.append(self.filter_doctor.get())
+        if self.filter_paciente.get():
+            filtros.append("pacientes.nombre = ?")
+            params.append(self.filter_paciente.get())
+        if self.filter_fecha.get():
+            filtros.append("citas.fecha = ?")
+            params.append(self.filter_fecha.get())
+
+        if filtros:
+            sql += " WHERE " + " AND ".join(filtros)
+
+        sql += " ORDER BY citas.fecha, citas.hora"
+
+        self.cursor.execute(sql, tuple(params))
+        for row in self.cursor.fetchall():
+            self.tree.insert("", "end", values=row)
+
+    def limpiar_filtros(self):
+        self.filter_doctor.set("")
+        self.filter_paciente.set("")
+        self.filter_fecha.set("")
+        self.mostrar_citas()
+
+    def on_tree_select(self, event):
+        sel = self.tree.selection()
+        if not sel:
+            return
+        item = self.tree.item(sel)
+        valores = item["values"]
+        if not valores:
+            return
+      
+        self.mostrar_imagen_relacionada(paciente_nombre=valores[1], doctor_nombre=valores[2])
+
+    def mostrar_imagen_relacionada(self, paciente_nombre=None, doctor_nombre=None):
+      
+        p = paciente_nombre or self.var_paciente.get()
+        d = doctor_nombre or self.var_doctor.get()
+
+        if p:
+            self.cursor.execute("SELECT imagen FROM pacientes WHERE nombre = ?", (p,))
+            res = self.cursor.fetchone()
+            if res and res[0]:
+                self.cargar_preview(res[0]); return
+
+        if d:
+            self.cursor.execute("SELECT imagen FROM doctores WHERE nombre = ?", (d,))
+            res = self.cursor.fetchone()
+            if res and res[0]:
+                self.cargar_preview(res[0]); return
+
+        self.lbl_preview.config(image="", text="No hay imagen seleccionada", compound="center")
+
+    def cargar_preview(self, image_path):
+        if not os.path.exists(image_path):
+            self.lbl_preview.config(image="", text="Imagen no encontrada", compound="center")
+            return
+        if PIL_AVAILABLE:
+            try:
+                img = Image.open(image_path)
+                img.thumbnail((260, 160))
+                self.preview_img = ImageTk.PhotoImage(img)
+                self.lbl_preview.config(image=self.preview_img, text="")
+            except Exception:
+                self.lbl_preview.config(image="", text="Error cargando imagen", compound="center")
+        else:
+            try:
+                img_tk = tk.PhotoImage(file=image_path)
+                self.preview_img = img_tk
+                self.lbl_preview.config(image=self.preview_img, text="")
+            except Exception:
+                self.lbl_preview.config(image="", text="Instala Pillow para preview", compound="center")
+
+    def eliminar_cita(self):
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showwarning("Seleccionar cita", "Seleccione una cita para eliminar.")
+            return
+        item = self.tree.item(sel)
+        cita_id = item["values"][0]
+        if messagebox.askyesno("Confirmar", "¿Eliminar la cita seleccionada?"):
+            self.cursor.execute("DELETE FROM citas WHERE id = ?", (cita_id,))
+            self.db.commit()
+            messagebox.showinfo("Eliminada", "Cita eliminada correctamente.")
+            self.mostrar_citas()
+            self.limpiar_campos_cita()
+
+    def cargar_cita_para_editar(self):
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showwarning("Seleccionar cita", "Seleccione una cita para editar.")
+            return
+        item = self.tree.item(sel)
+        id_cita, paciente, doctor, fecha, hora = item["values"]
+        self.editing_id = id_cita
+        self.var_paciente.set(paciente)
+        self.var_doctor.set(doctor)
+        self.var_fecha.set(fecha)
+        self.var_hora.set(hora)
+        self.btn_guardar.config(state="disabled")
+        self.btn_actualizar.config(state="normal")
+        self.mostrar_imagen_relacionada(paciente_nombre=paciente, doctor_nombre=doctor)
+
+    def actualizar_cita(self):
+        if not hasattr(self, "editing_id") or not self.editing_id:
+            messagebox.showwarning("Editar", "No hay cita en edición.")
+            return
+
+        paciente_nombre = self.var_paciente.get().strip()
+        doctor_nombre = self.var_doctor.get().strip()
+        fecha = self.var_fecha.get().strip()
+        hora = self.var_hora.get().strip()
+
+        if not paciente_nombre or not doctor_nombre or not fecha or not hora:
+            messagebox.showwarning("Campos incompletos", "Complete todos los campos antes de actualizar.")
+            return
+
+        try:
+            datetime.datetime.strptime(fecha, "%Y-%m-%d")
+        except Exception:
+            messagebox.showerror("Formato fecha", "La fecha debe tener formato YYYY-MM-DD.")
+            return
+        try:
+            datetime.datetime.strptime(hora, "%H:%M")
+        except Exception:
+            messagebox.showerror("Formato hora", "La hora debe tener formato HH:MM (24h).")
+            return
+
+        self.cursor.execute("SELECT id FROM doctores WHERE nombre = ?", (doctor_nombre,))
+        doctor = self.cursor.fetchone()
+        if not doctor:
+            messagebox.showerror("Doctor no existe", "Seleccione o cree un doctor válido.")
+            return
+        id_doctor = doctor[0]
+
+        self.cursor.execute("SELECT id FROM pacientes WHERE nombre = ?", (paciente_nombre,))
+        paciente = self.cursor.fetchone()
+        if not paciente:
+            messagebox.showerror("Paciente no existe", "Seleccione o cree un paciente válido.")
+            return
+        id_paciente = paciente[0]
+
+        self.cursor.execute("""
+            SELECT COUNT(*) FROM citas WHERE id_doctor=? AND fecha=? AND hora=? AND id != ?
+        """, (id_doctor, fecha, hora, self.editing_id))
+        if self.cursor.fetchone()[0] > 0:
+            messagebox.showerror("Conflicto de horario", "Ya existe otra cita para ese doctor en el mismo horario.")
+            return
+
+        self.cursor.execute("""
+            UPDATE citas SET id_paciente=?, id_doctor=?, fecha=?, hora=? WHERE id=?
+        """, (id_paciente, id_doctor, fecha, hora, self.editing_id))
+        self.db.commit()
+        messagebox.showinfo("Actualizado", "Cita actualizada correctamente.")
+        self.editing_id = None
+        self.btn_guardar.config(state="normal")
+        self.btn_actualizar.config(state="disabled")
+        self.limpiar_campos_cita()
+        self.mostrar_citas()
+
+    def limpiar_campos_cita(self):
+        self.var_paciente.set("")
+        self.var_doctor.set("")
+        self.var_fecha.set("")
+        self.var_hora.set("")
+        self.lbl_preview.config(image="", text="")
+        self.preview_img = None
+
+    def exportar_csv(self):
+        fpath = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV","*.csv")],
+                                             initialfile=f"citas_{datetime.date.today().isoformat()}.csv")
+        if not fpath:
+            return
+        sql = """
+            SELECT citas.id, pacientes.nombre, doctores.nombre, citas.fecha, citas.hora
+            FROM citas
+            JOIN pacientes ON citas.id_paciente = pacientes.id
+            JOIN doctores ON citas.id_doctor = doctores.id
+        """
+        filtros = []
+        params = []
+        if self.filter_doctor.get():
+            filtros.append("doctores.nombre = ?"); params.append(self.filter_doctor.get())
+        if self.filter_paciente.get():
+            filtros.append("pacientes.nombre = ?"); params.append(self.filter_paciente.get())
+        if self.filter_fecha.get():
+            filtros.append("citas.fecha = ?"); params.append(self.filter_fecha.get())
+        if filtros:
+            sql += " WHERE " + " AND ".join(filtros)
+        sql += " ORDER BY citas.fecha, citas.hora"
+        self.cursor.execute(sql, tuple(params))
+        rows = self.cursor.fetchall()
+
+        with open(fpath, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["ID", "Paciente", "Doctor", "Fecha", "Hora"])
+            writer.writerows(rows)
+        messagebox.showinfo("Exportado", f"Exportado a CSV: {fpath}")
+
+    def exportar_pdf(self):
+        if not REPORTLAB_AVAILABLE:
+            messagebox.showwarning("Reportlab no instalado", "Instala 'reportlab' para exportar PDF (pip install reportlab).\nSe exportará a CSV en su lugar.")
+            self.exportar_csv()
+            return
+
+        fpath = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF","*.pdf")],
+                                             initialfile=f"citas_{datetime.date.today().isoformat()}.pdf")
+        if not fpath:
+            return
+
+        sql = """
+            SELECT pacientes.nombre, doctores.nombre, citas.fecha, citas.hora
+            FROM citas
+            JOIN pacientes ON citas.id_paciente = pacientes.id
+            JOIN doctores ON citas.id_doctor = doctores.id
+        """
+        filtros = []
+        params = []
+        if self.filter_doctor.get():
+            filtros.append("doctores.nombre = ?"); params.append(self.filter_doctor.get())
+        if self.filter_paciente.get():
+            filtros.append("pacientes.nombre = ?"); params.append(self.filter_paciente.get())
+        if self.filter_fecha.get():
+            filtros.append("citas.fecha = ?"); params.append(self.filter_fecha.get())
+        if filtros:
+            sql += " WHERE " + " AND ".join(filtros)
+        sql += " ORDER BY citas.fecha, citas.hora"
+        self.cursor.execute(sql, tuple(params))
+        rows = self.cursor.fetchall()
+
+        c = canvas.Canvas(fpath, pagesize=letter)
+        w, h = letter
+        y = h - 72
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(72, y, "Listado de Citas")
+        y -= 24
+        c.setFont("Helvetica", 10)
+        c.drawString(72, y, f"Generado: {datetime.datetime.now().isoformat(' ', 'seconds')}")
+        y -= 24
+
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(72, y, "Paciente")
+        c.drawString(250, y, "Doctor")
+        c.drawString(420, y, "Fecha")
+        c.drawString(490, y, "Hora")
+        y -= 16
+        c.setFont("Helvetica", 9)
+
+        for row in rows:
+            if y < 72:
+                c.showPage()
+                y = h - 72
+            paciente, doctor, fecha, hora = row
+            c.drawString(72, y, str(paciente))
+            c.drawString(250, y, str(doctor))
+            c.drawString(420, y, str(fecha))
+            c.drawString(490, y, str(hora))
+            y -= 16
+
+        c.save()
+        messagebox.showinfo("PDF generado", f"Archivo PDF guardado en: {fpath}")
+
+    def agregar_persona(self, nombre, tipo, imagen_path=None, editar_id=None):
+        """
+        tipo: 'paciente' o 'doctor'
+        editar_id: si se pasa, actualiza en lugar de insertar
+        """
+        if tipo not in ("paciente", "doctor"):
+            return
+        tabla = "pacientes" if tipo == "paciente" else "doctores"
+        if editar_id:
+          
+            if imagen_path:
+                
+                dest = self._copiar_imagen(imagen_path)
+                self.cursor.execute(f"UPDATE {tabla} SET nombre=?, imagen=? WHERE id=?", (nombre, dest, editar_id))
+            else:
+                self.cursor.execute(f"UPDATE {tabla} SET nombre=? WHERE id=?", (nombre, editar_id))
+        else:
+            if imagen_path:
+                dest = self._copiar_imagen(imagen_path)
+                self.cursor.execute(f"INSERT INTO {tabla} (nombre, imagen) VALUES (?, ?)", (nombre, dest))
+            else:
+                self.cursor.execute(f"INSERT INTO {tabla} (nombre, imagen) VALUES (?, ?)", (nombre, None))
+        self.db.commit()
+        self.cargar_comboboxes()
+        self.mostrar_citas()
+        messagebox.showinfo("Éxito", f"{tipo.title()} guardado correctamente.")
+
+    def _copiar_imagen(self, src_path):
+        if not src_path:
+            return None
+     
+        nombre = os.path.basename(src_path)
+        base, ext = os.path.splitext(nombre)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        dest_name = f"{base}_{timestamp}{ext}"
+        dest_path = os.path.join(IMAGE_DIR, dest_name)
+        try:
+            with open(src_path, "rb") as fr, open(dest_path, "wb") as fw:
+                fw.write(fr.read())
+            return dest_path
+        except Exception:
+            return None
+
+
+class PopupPersona:
+    """ Popup para agregar o editar Paciente/Doctor """
+    def __init__(self, parent_app: ModuloCitasApp, tipo="paciente", editar_id=None):
+        self.app = parent_app
+        self.tipo = tipo
+        self.editar_id = editar_id
+        self.top = tk.Toplevel()
+        self.top.title("Agregar " + tipo.title())
+        self.top.geometry("420x220")
+        self.top.resizable(False, False)
+
+        tk.Label(self.top, text=f"Nombre {tipo.title()}:").place(x=12, y=12)
+        self.entry_nombre = tk.Entry(self.top, width=48)
+        self.entry_nombre.place(x=12, y=36)
+
+        tk.Label(self.top, text="Imagen (opcional):").place(x=12, y=72)
+        self.entry_img = tk.Entry(self.top, width=36)
+        self.entry_img.place(x=12, y=96)
+        tk.Button(self.top, text="Examinar", command=self.seleccionar_imagen).place(x=320, y=92)
+
+        tk.Button(self.top, text="Guardar", bg="#4CAF50", fg="white", command=self.guardar).place(x=12, y=140)
+        tk.Button(self.top, text="Cancelar", command=self.top.destroy).place(x=110, y=140)
+
+       
+        if self.editar_id:
+            tabla = "pacientes" if self.tipo == "paciente" else "doctores"
+            self.app.cursor.execute(f"SELECT nombre, imagen FROM {tabla} WHERE id = ?", (self.editar_id,))
+            r = self.app.cursor.fetchone()
+            if r:
+                self.entry_nombre.insert(0, r[0])
+                if r[1]:
+                    self.entry_img.insert(0, r[1])
+
+    def seleccionar_imagen(self):
+        f = filedialog.askopenfilename(filetypes=[("Imagenes", "*.png;*.jpg;*.jpeg;*.gif;*.bmp"), ("Todos","*.*")])
+        if f:
+            self.entry_img.delete(0, tk.END)
+            self.entry_img.insert(0, f)
+
+    def guardar(self):
+        nombre = self.entry_nombre.get().strip()
+        img = self.entry_img.get().strip() or None
+        if not nombre:
+            messagebox.showwarning("Nombre requerido", "Introduce el nombre.")
+            return
+        self.app.agregar_persona(nombre, self.tipo, imagen_path=img, editar_id=self.editar_id)
+        self.top.destroy()
+
+def main():
+    root = tk.Tk()
+    app = ModuloCitasApp(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
