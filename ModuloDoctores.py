@@ -2,9 +2,11 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 
+
 class ModuloDoctores:
     def __init__(self, ventana_principal):
-        self.ventana = tk.Toplevel(ventana_principal)
+        self.ventana_principal = ventana_principal  #JM: guardo la ventana principal
+        self.ventana = tk.Toplevel(ventana_principal) 
         self.ventana.title("Gestión de Doctores")
         self.ventana.geometry("900x600")
         self.ventana.configure(bg='#f0f8ff')
@@ -68,6 +70,80 @@ class ModuloDoctores:
         self.conexion.commit()
     
     def crear_widgets(self):
+        #JM: Titulo
+        self.frame_title = tk.Frame(self.ventana, background="#000A91", width=100, height=30)
+        self.frame_title.pack(fill="x")
+        
+        self.boton_title = tk.Button(
+            self.frame_title,
+            text="Citas Medicas",
+            font=("Arial", 14, "bold"),
+            background="#000A91",
+            foreground="#FFFFFF",
+            borderwidth=0,
+            relief="flat",
+            command=self.ir_inicio
+        )
+        self.boton_title.pack()
+        
+        #JM: Cree el frame de la barra de navegacion y los botones
+        self.frame_navbar = tk.Frame(self.ventana, background="#7C7C7C", width=100, height=40)
+        self.frame_navbar.pack(fill="x")
+        self.frame_navbar.pack_propagate(False)
+        self.frame_navbar.columnconfigure(0, weight=1)
+        self.frame_navbar.columnconfigure(4, weight=1)
+        
+        self.paciente_btn = tk.Button(
+            self.frame_navbar, 
+            text="Pacientes",
+            height=1,
+            width=10,
+            font=("Arial", 12),  
+            background="#4A90E2", 
+            foreground="#F0F0F0",
+            borderwidth=2,
+            relief="solid", 
+            activebackground="#1557A3",
+            activeforeground="#F0F0F0",
+            cursor="hand2",
+            command=self.abrir_pacientes
+        )
+        self.paciente_btn.grid(row=0, column=1, padx=10)
+        
+        self.doctores_btn = tk.Button(
+            self.frame_navbar, 
+            text="Doctores",
+            height=1,
+            width=10,
+            font=("Arial", 12),  
+            background="#4A90E2", 
+            foreground="#F0F0F0",
+            borderwidth=2,
+            relief="solid", 
+            activebackground="#1557A3",
+            activeforeground="#F0F0F0",
+            cursor="hand2",
+            command=self.abri_doctores
+        )
+        self.doctores_btn.grid(row=0, column=2, padx=10)
+        
+        self.citas_btn = tk.Button(
+            self.frame_navbar, 
+            text="Citas",
+            height=1,
+            width=10,
+            font=("Arial", 12),  
+            background="#4A90E2", 
+            foreground="#F0F0F0",
+            borderwidth=2,
+            relief="solid", 
+            activebackground="#1557A3",
+            activeforeground="#F0F0F0",
+            cursor="hand2",
+            command=self.abrir_citas
+        )
+        self.citas_btn.grid(row=0, column=3, padx=10)
+        
         # Frame principal
         frame_principal = tk.Frame(self.ventana, bg='#f0f8ff')
         frame_principal.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -296,9 +372,18 @@ class ModuloDoctores:
     def cerrar(self):
         self.conexion.close()
         self.ventana.destroy()
+        
+    #JM: funciones para navegar entre secciones
+    def ir_inicio(self):
+        self.ventana.destroy()
+        self.ventana_principal.deiconify()
+       
+    def abrir_pacientes(self):
+        self.ventana_principal.abrir_pacientes()
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.withdraw()
-    app = ModuloDoctores(root)
-    root.mainloop()
+    def abri_doctores(self):
+        self.ventana_principal.abrir_doctores()
+
+    def abrir_citas(self):
+        self.ventana_principal.abrir_citas()
+
