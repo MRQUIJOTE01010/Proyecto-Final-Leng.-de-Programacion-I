@@ -2,7 +2,7 @@ import tkinter as tk
 import os
 from CRUD_Pacientes import ModuloPacientes
 from ModuloDoctores import ModuloDoctores
-from AngendarCitas import ModuloCitasApp
+from AgendarCitas import ModuloCitasApp
 
 class Root(tk.Tk):
     def __init__(self):
@@ -144,4 +144,3 @@ class Root(tk.Tk):
 if __name__ == "__main__":
     app = Root()
     app.mainloop()
-
