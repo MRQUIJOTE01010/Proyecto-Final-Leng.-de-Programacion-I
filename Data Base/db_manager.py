@@ -28,7 +28,8 @@ class DBManager:
                 nombre TEXT NOT NULL,
                 apellido TEXT NOT NULL,
                 especialidad TEXT NOT NULL,
-                telefono TEXT
+                telefono TEXT NOT NULL,
+                horario TEXT NOT NULL
             )
         """)
 
